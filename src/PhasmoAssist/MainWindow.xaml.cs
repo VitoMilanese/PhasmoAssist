@@ -8,6 +8,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Enum;
 
 namespace PhasmoAssist
@@ -17,7 +18,11 @@ namespace PhasmoAssist
     /// </summary>
     public partial class MainWindow : Window
     {
+#if DEBUG
+        const string TargetProcessName = "Notepad++";
+#else
         const string TargetProcessName = "Phasmophobia";
+#endif
 
         private GlobalKeyboardHook _keyboardHook;
         private bool _isVisible { get; set; }
@@ -31,7 +36,6 @@ namespace PhasmoAssist
         private int _ghostsFontSize = 35;
         private int _ghostsFontSizeIdentified = 60;
         private Stopwatch _sw { get; set; }
-        private CancellationTokenSource? _visibilityControllerToken { get; set; }
         private CancellationTokenSource? _assistTimerToken { get; set; }
         private CancellationTokenSource? _blinkTextToken { get; set; }
 
@@ -45,9 +49,14 @@ namespace PhasmoAssist
 
             _isVisible = true;
             _isTimerReset = true;
+            
+            Hide();
+            _isTemporarilyHidden = true;
 
-            _visibilityControllerToken = new CancellationTokenSource();
-            Task.Run(VisibilityController);
+            var timer = new DispatcherTimer();
+            timer.Interval = TimeSpan.FromMilliseconds(500);
+            timer.Tick += CheckVisibilityOnTimerTick;
+            timer.Start();
 
             LoadLanguage();
             StartBlinking();
@@ -729,25 +738,18 @@ namespace PhasmoAssist
             }
         }
 
-        private async Task VisibilityController()
+        private void CheckVisibilityOnTimerTick(object? sender, EventArgs e)
         {
-            while (!(_visibilityControllerToken == null || _visibilityControllerToken.IsCancellationRequested))
+            var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
+            if (!_isTemporarilyHidden && proc == null)
             {
-                var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
-                Dispatcher.Invoke(() =>
-                {
-                    if (!_isTemporarilyHidden && proc == null)
-                    {
-                        _isTemporarilyHidden = true;
-                        Hide();
-                    }
-                    else if (_isTemporarilyHidden && _isVisible && proc != null)
-                    {
-                        Show();
-                        _isTemporarilyHidden = false;
-                    }
-                });
-                await Task.Delay(TimeSpan.FromMilliseconds(500));
+                _isTemporarilyHidden = true;
+                Hide();
+            }
+            else if (_isTemporarilyHidden && _isVisible && proc != null)
+            {
+                Show();
+                _isTemporarilyHidden = false;
             }
         }
 
