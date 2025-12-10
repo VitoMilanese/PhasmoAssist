@@ -26,7 +26,8 @@ namespace PhasmoAssist
 
         private GlobalKeyboardHook _keyboardHook;
         private bool _isVisible { get; set; }
-        private bool _isTemporarilyHidden { get; set; }
+        private bool _isTemporarilyHidden { get; set; } // hidden and waiting for the TargetProcessName
+        private bool _isFocused { get; set; } // this process or the TargetProcessName is focused
         private bool _isTimerReset { get; set; }
         private string? _languageFileName { get; set; }
         private string[]? _language { get; set; }
@@ -52,11 +53,17 @@ namespace PhasmoAssist
             
             Hide();
             _isTemporarilyHidden = true;
+            _isFocused = false;
 
-            var timer = new DispatcherTimer();
-            timer.Interval = TimeSpan.FromMilliseconds(500);
-            timer.Tick += CheckVisibilityOnTimerTick;
-            timer.Start();
+            var timerOfVisibility = new DispatcherTimer();
+            timerOfVisibility.Interval = TimeSpan.FromMilliseconds(500);
+            timerOfVisibility.Tick += CheckVisibilityOnTimerTick;
+            timerOfVisibility.Start();
+
+            var timerOfFocus = new DispatcherTimer();
+            timerOfFocus.Interval = TimeSpan.FromMilliseconds(250);
+            timerOfFocus.Tick += CheckFocusOnTimerTick;
+            timerOfFocus.Start();
 
             LoadLanguage();
             StartBlinking();
@@ -484,7 +491,7 @@ namespace PhasmoAssist
 
         private void OnGlobalKeyPressed(Key key)
         {
-            if (_isTemporarilyHidden && key != Key.F4) return;
+            if ((_isTemporarilyHidden || !_isFocused) && key != Key.F4) return;
             Dispatcher.Invoke(() =>
             {
                 if (key == Key.F10)
@@ -498,7 +505,11 @@ namespace PhasmoAssist
                         case Key.F1: F1(); break;
                         case Key.F2: F2(); break;
                         case Key.F4: F4(); break;
+#if DEBUG
+                        case Key.F8: F5(); break;
+#else
                         case Key.F5: F5(); break;
+#endif
                         default:
                             {
                                 var n = key - Key.D0;
@@ -741,6 +752,7 @@ namespace PhasmoAssist
         private void CheckVisibilityOnTimerTick(object? sender, EventArgs e)
         {
             var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
+
             if (!_isTemporarilyHidden && proc == null)
             {
                 _isTemporarilyHidden = true;
@@ -748,8 +760,34 @@ namespace PhasmoAssist
             }
             else if (_isTemporarilyHidden && _isVisible && proc != null)
             {
-                Show();
+                if (_isFocused)
+                {
+                    Show();
+                }
                 _isTemporarilyHidden = false;
+            }
+        }
+
+        private void CheckFocusOnTimerTick(object? sender, EventArgs e)
+        {
+            if (_isTemporarilyHidden) return;
+
+            var assistProcessName = Path.GetFileNameWithoutExtension(Assembly.GetExecutingAssembly().GetName().Name);
+            var proc1Focused = IsAppFocused(assistProcessName!);
+            var proc2Focused = IsAppFocused(TargetProcessName);
+
+            if (!proc1Focused && !proc2Focused)
+            {
+                Hide();
+                _isFocused = false;
+            }
+            else
+            {
+                if (!_isFocused && _isVisible && !_isTemporarilyHidden && proc2Focused) // check the _isTemporarilyHidden one more time because it could be changed asynchronously
+                {
+                    Show();
+                    _isFocused = true;
+                }
             }
         }
 
@@ -784,6 +822,25 @@ namespace PhasmoAssist
             SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
         }
 
+        private static bool IsAppFocused(string processName)
+        {
+            var foreground = GetForegroundWindow();
+            if (foreground == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            GetWindowThreadProcessId(foreground, out uint pid);
+            var proc = Process.GetProcessesByName(processName).FirstOrDefault();
+
+            if (proc == null)
+            {
+                return false;
+            }
+
+            return proc.Id == pid;
+        }
+
         #region DLL IMPORT
         [DllImport("user32.dll")]
         static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -802,6 +859,12 @@ namespace PhasmoAssist
 
         [DllImport("user32.dll")]
         static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
         const int SW_RESTORE = 9;
         const int GWL_EXSTYLE = -20;
