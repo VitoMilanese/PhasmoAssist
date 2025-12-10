@@ -2,6 +2,7 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Policy;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -74,6 +75,8 @@ namespace PhasmoAssist
             _sw = new Stopwatch();
             _keyboardHook = new GlobalKeyboardHook();
             _keyboardHook.KeyPressed += OnGlobalKeyPressed;
+
+            LaunchTheGame();
         }
 
         private void LoadLanguage()
@@ -542,6 +545,25 @@ namespace PhasmoAssist
                     }
                 }
             });
+        }
+
+        private void LaunchTheGame()
+        {
+            try
+            {
+                var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
+                if (proc == null)
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "steam://rungameid/739630",
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch
+            {
+            }
         }
 
         protected override void OnClosed(EventArgs e)
