@@ -1,0 +1,810 @@
+﻿using System.Diagnostics;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using Enum;
+
+namespace PhasmoAssist
+{
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        const string TargetProcessName = "Phasmophobia";
+
+        private GlobalKeyboardHook _keyboardHook;
+        private bool _isVisible { get; set; }
+        private bool _isTemporarilyHidden { get; set; }
+        private bool _isTimerReset { get; set; }
+        private string? _languageFileName { get; set; }
+        private string[]? _language { get; set; }
+        private int _timerFontSizeInitial = 35;
+        private int _timerFontSizeAbove20 = 50;
+        private int _evidencesFontSize = 35;
+        private int _ghostsFontSize = 35;
+        private int _ghostsFontSizeIdentified = 60;
+        private Stopwatch _sw { get; set; }
+        private CancellationTokenSource? _visibilityControllerToken { get; set; }
+        private CancellationTokenSource? _assistTimerToken { get; set; }
+        private CancellationTokenSource? _blinkTextToken { get; set; }
+
+        private List<Ghost>? Ghosts { get; set; }
+        private Dictionary<EEvidence, bool> _evidences = new Dictionary<EEvidence, bool>();
+        private Dictionary<EEvidence, bool> _evidencesBackup = new Dictionary<EEvidence, bool>();
+
+        public MainWindow()
+        {
+            InitializeComponent();
+
+            _isVisible = true;
+            _isTimerReset = true;
+
+            _visibilityControllerToken = new CancellationTokenSource();
+            Task.Run(VisibilityController);
+
+            LoadLanguage();
+            StartBlinking();
+            LoadConfig();
+            InitGhosts();
+            LoadEvidences();
+
+            _sw = new Stopwatch();
+            _keyboardHook = new GlobalKeyboardHook();
+            _keyboardHook.KeyPressed += OnGlobalKeyPressed;
+        }
+
+        private void LoadLanguage()
+        {
+            var root = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var languagesDir = Path.Combine(root!, "Languages");
+            if (Directory.Exists(languagesDir))
+            {
+                var files = Directory.GetFiles(languagesDir, "*.txt", SearchOption.TopDirectoryOnly);
+                if (files != null && files.Any())
+                {
+                    var langFileName = Path.Combine(root!, "lang.inf");
+                    if (File.Exists(langFileName))
+                    {
+                        var content = File.ReadAllText(langFileName).Trim();
+                        langFileName = Path.Combine(languagesDir, content);
+                        if (File.Exists(langFileName))
+                        {
+                            LoadLanguage(langFileName);
+                        }
+                        else if (files.Length == 1)
+                        {
+                            LoadLanguage(files.First());
+                        }
+                        else
+                        {
+                            langFileName = Path.Combine(languagesDir, "Українська.txt");
+                            if (File.Exists(langFileName))
+                            {
+                                LoadLanguage(langFileName);
+                            }
+                            else
+                            {
+                                LoadLanguage(files.First());
+                            }
+                        }
+                    }
+                    else
+                    {
+                        langFileName = Path.Combine(languagesDir, "Українська.txt");
+                        if (File.Exists(langFileName))
+                        {
+                            LoadLanguage(langFileName);
+                        }
+                        else
+                        {
+                            LoadLanguage(files.First());
+                        }
+                    }
+                }
+            }
+        }
+
+        private void StartBlinking()
+        {
+            _blinkTextToken = new CancellationTokenSource();
+            Task.Run(BlinkText);
+        }
+
+        private void LoadEvidences()
+        {
+            var evidences = System.Enum.GetValues(typeof(EEvidence)).Cast<EEvidence>();
+            foreach (var evidence in evidences)
+            {
+                _evidences.Add(evidence, false);
+                _evidencesBackup.Add(evidence, false);
+            }
+        }
+
+        private void LoadLanguage(string fileName)
+        {
+            if (!File.Exists(fileName))
+            {
+                var rnd = new Random(DateTime.Now.Millisecond).Next();
+                if (rnd % 2 == 0)
+                {
+                    MessageBox.Show("Відсутній словник", "Помилка", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                else
+                {
+                    MessageBox.Show("Dictionary not detected", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                Application.Current.Shutdown();
+            }
+
+            _language = File.ReadAllLines(fileName);
+            _languageFileName = fileName;
+
+            var root = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var langFileName = Path.Combine(root!, "lang.inf");
+            File.WriteAllText(langFileName, fileName);
+        }
+
+        private void LoadConfig()
+        {
+            var root = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var configFileName = Path.Combine(root!, "config.cfg");
+            
+            if (File.Exists(configFileName))
+            {
+                var content = File.ReadAllLines(configFileName);
+                for (var i = 1; i < content.Length; i += 2)
+                {
+                    var line = content[i];
+                    if (!int.TryParse(line, out var value)) value = 0;
+                    if (value <= 0) continue;
+
+                    switch (i)
+                    {
+                        case 1:
+                            {
+                                _timerFontSizeInitial = value;
+                                break;
+                            }
+                        case 3:
+                            {
+                                _timerFontSizeAbove20 = value;
+                                break;
+                            }
+                        case 5:
+                            {
+                                _evidencesFontSize = value;
+                                break;
+                            }
+                        case 7:
+                            {
+                                _ghostsFontSize = value;
+                                break;
+                            }
+                        case 9:
+                            {
+                                _ghostsFontSizeIdentified = value;
+                                break;
+                            }
+                    }
+                }
+            }
+
+            tbAssistTimer.FontSize = _timerFontSizeInitial;
+            tbEvidences.FontSize = _evidencesFontSize;
+            tbGhosts.FontSize = _ghostsFontSize;
+
+            var cfg = new[]
+            {
+                "[Initial timer font size]",
+                _timerFontSizeInitial.ToString(),
+                "[Timer font size after 20]",
+                _timerFontSizeAbove20.ToString(),
+                "[Evidence font size]",
+                _evidencesFontSize.ToString(),
+                "[Ghosts font size]",
+                _ghostsFontSize.ToString(),
+                "[Identified ghost font size]",
+                _ghostsFontSizeIdentified.ToString()
+            };
+            File.WriteAllLines(configFileName, cfg);
+        }
+
+        private void InitGhosts()
+        {
+            Ghosts =
+            [
+                new Ghost
+                {
+                    GhostType = EGhost.Spirit,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.EMF5,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Wraith,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.EMF5,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Phantom,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.Ultraviolet,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Poltergeist,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.Ultraviolet,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Banshee,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.GhostOrb,
+                        EEvidence.Ultraviolet
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Jinn,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.EMF5,
+                        EEvidence.Ultraviolet,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Mare,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.GhostOrb,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Revenant,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.GhostOrb,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Shade,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.EMF5,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Demon,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.Ultraviolet,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Yurei,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.GhostOrb,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Oni,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.EMF5,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Yokai,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.GhostOrb,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Hantu,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostOrb,
+                        EEvidence.Ultraviolet,
+                        EEvidence.FreezingTemperatures
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Goryo,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.EMF5,
+                        EEvidence.Ultraviolet
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Myling,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.EMF5,
+                        EEvidence.Ultraviolet
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Onryo,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostOrb,
+                        EEvidence.FreezingTemperatures,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Twins,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.EMF5,
+                        EEvidence.FreezingTemperatures,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Raiju,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.EMF5,
+                        EEvidence.GhostOrb
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Obake,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.EMF5,
+                        EEvidence.GhostOrb,
+                        EEvidence.Ultraviolet
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Mimic,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.Ultraviolet,
+                        EEvidence.FreezingTemperatures,
+                        EEvidence.SpiritBox,
+                        EEvidence.GhostOrb
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Moroi,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.FreezingTemperatures,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Deogen,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.GhostWriting,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Thaye,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.DOTS,
+                        EEvidence.GhostWriting,
+                        EEvidence.GhostOrb
+                    }
+                }
+            ];
+        }
+
+        private string GetWord(int id)
+        {
+            if (_language != null && _language.Length > id)
+            {
+                return _language[id];
+            }
+            return "?";
+        }
+
+        private void OnGlobalKeyPressed(Key key)
+        {
+            if (_isTemporarilyHidden && key != Key.F4) return;
+            Dispatcher.Invoke(() =>
+            {
+                if (key == Key.F10)
+                {
+                    F10();
+                }
+                else if (_isVisible)
+                {
+                    switch (key)
+                    {
+                        case Key.F1: F1(); break;
+                        case Key.F2: F2(); break;
+                        case Key.F4: F4(); break;
+                        case Key.F5: F5(); break;
+                        default:
+                            {
+                                var n = key - Key.D0;
+                                if (n == 0 || key == Key.Oem3)
+                                {
+                                    if (!_evidences.Where(p => p.Value).Select(p => p.Key).Any())
+                                    {
+                                        foreach (var evidence in _evidencesBackup.Keys)
+                                        {
+                                            _evidences[evidence] = _evidencesBackup[evidence];
+                                            OnEvidencesUpdated();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        foreach (var evidence in _evidences.Keys)
+                                        {
+                                            _evidencesBackup[evidence] = _evidences[evidence];
+                                            _evidences[evidence] = false;
+                                            OnEvidencesUpdated();
+                                        }
+                                    }
+                                } else if (n > 0 && n < 8)
+                                {
+                                    _evidences[(EEvidence)(n - 1)] = !_evidences[(EEvidence)(n - 1)];
+                                    OnEvidencesUpdated();
+                                }
+                                break;
+                            }
+                    }
+                }
+            });
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _keyboardHook.Dispose();
+            base.OnClosed(e);
+        }
+
+        private void F10()
+        {
+            if (_isVisible)
+            {
+                Hide();
+            }
+            else
+            {
+                Show();
+            }
+            _isVisible = !_isVisible;
+        }
+
+        private void F1()
+        {
+            if (_isTimerReset)
+            {
+                _isTimerReset = false;
+                _assistTimerToken?.Cancel();
+                _assistTimerToken = new CancellationTokenSource();
+                tbAssistTimer.FontSize = _timerFontSizeInitial;
+                tbAssistTimer.Foreground = Brushes.White;
+                Task.Run(AssistTimer);
+                _sw.Start();
+                tbAssistTimer.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _sw.Reset();
+                _isTimerReset = true;
+                tbAssistTimer.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void F2()
+        {
+            var root = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var languagesDir = Path.Combine(root!, "Languages");
+            if (Directory.Exists(languagesDir))
+            {
+                var files = Directory.GetFiles(languagesDir, "*.txt", SearchOption.TopDirectoryOnly).ToList();
+                if (files != null && files.Count > 1)
+                {
+                    var current = string.IsNullOrWhiteSpace(_languageFileName)
+                        ? 0
+                        : files.IndexOf(_languageFileName);
+                    var next = current + 1;
+                    if (next >= files.Count)
+                    {
+                        next = 0;
+                    }
+                    LoadLanguage(files[next]);
+                    OnEvidencesUpdated();
+                }
+            }
+        }
+
+        private void F4()
+        {
+            _blinkTextToken?.Cancel();
+            Application.Current.Shutdown();
+        }
+
+        private void F5()
+        {
+            var visible = About.Visibility == Visibility.Visible;
+            if (visible)
+            {
+                About.Visibility = Visibility.Collapsed;
+                FocusPhasmaphobia();
+            }
+            else
+            {
+                About.Visibility = Visibility.Visible;
+                Activate();
+                Focus();
+            }
+        }
+
+        private async Task AssistTimer()
+        {
+            while (!(_assistTimerToken == null || _assistTimerToken.IsCancellationRequested))
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    tbAssistTimer.Text = _sw.Elapsed.ToString("ss") + "." + _sw.Elapsed.Milliseconds.ToString();
+                    if (_sw.Elapsed.Seconds >= 20)
+                    {
+                        tbAssistTimer.FontSize = _timerFontSizeAbove20;
+                    }
+                    if (_sw.Elapsed.Seconds >= 180)
+                    {
+                        tbAssistTimer.Foreground = Brushes.Red;
+                    }
+                });
+                await Task.Delay(100);
+            }
+        }
+
+        private void OnEvidencesUpdated()
+        {
+            if (!_evidences.Where(p => p.Value).Select(p => p.Key).Any())
+            {
+                tbEvidences.Text = string.Empty;
+                tbGhosts.Text = string.Empty;
+                tbEvidences.Visibility = Visibility.Collapsed;
+                tbGhosts.Visibility = Visibility.Collapsed;
+                tbGhosts.FontSize = _ghostsFontSize;
+                return;
+            }
+
+            var evidences = new List<string>();
+            foreach (var evidence in _evidences.Where(p => p.Value).Select(p => p.Key))
+            {
+                evidences.Add(Translate(evidence));
+            }
+            tbEvidences.Text = string.Join(" - ", evidences);
+            tbEvidences.Visibility = string.IsNullOrWhiteSpace(tbEvidences.Text) ? Visibility.Collapsed : Visibility.Visible;
+
+            var filter = new List<Ghost>();
+            foreach (var ghost in Ghosts!)
+            {
+                if (ghost.Check(_evidences))
+                {
+                    filter.Add(ghost);
+                }
+            }
+            if (filter.Any())
+            {
+                var ghosts = new List<string>();
+                foreach (var ghost in filter)
+                {
+                    ghosts.Add(Translate(ghost.GhostType));
+                }
+                tbGhosts.Text = string.Join (" - ", ghosts);
+                if (ghosts.Count == 1)
+                {
+                    tbGhosts.FontSize = _ghostsFontSizeIdentified;
+                }
+                else
+                {
+                    tbGhosts.FontSize = _ghostsFontSize;
+                }
+            }
+            else
+            {
+                tbGhosts.Text = string.Empty;
+                tbGhosts.FontSize = _ghostsFontSize;
+            }
+            tbGhosts.Visibility = string.IsNullOrWhiteSpace(tbGhosts.Text) ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        private string Translate(EEvidence evidence) => GetWord((int)evidence);
+
+        private string Translate(EGhost ghost) => GetWord((int)ghost + 7);
+
+        private void Hyperlink_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Hyperlink lnk)
+            {
+                var url = lnk.NavigateUri.AbsoluteUri;
+                if (string.IsNullOrEmpty(url)) return;
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+        }
+
+        private void Image_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Image img)
+            {
+                var url = img.Tag?.ToString();
+                if (string.IsNullOrEmpty(url)) return;
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+        }
+
+        private async Task BlinkText()
+        {
+            while (!(_blinkTextToken == null || _blinkTextToken.IsCancellationRequested))
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    tbBlink1.Visibility = tbBlink1.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                    tbBlink2.Visibility = tbBlink2.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                    tbBlink3.Visibility = tbBlink3.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                    tbBlink4.Visibility = tbBlink4.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+                });
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+        }
+
+        private async Task VisibilityController()
+        {
+            while (!(_visibilityControllerToken == null || _visibilityControllerToken.IsCancellationRequested))
+            {
+                var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
+                Dispatcher.Invoke(() =>
+                {
+                    if (!_isTemporarilyHidden && proc == null)
+                    {
+                        _isTemporarilyHidden = true;
+                        Hide();
+                    }
+                    else if (_isTemporarilyHidden && _isVisible && proc != null)
+                    {
+                        Show();
+                        _isTemporarilyHidden = false;
+                    }
+                });
+                await Task.Delay(TimeSpan.FromMilliseconds(500));
+            }
+        }
+
+        private void FocusPhasmaphobia()
+        {
+            var proc = Process.GetProcessesByName(TargetProcessName).FirstOrDefault();
+            if (proc != null)
+            {
+                var hWnd = proc.MainWindowHandle;
+
+                if (IsIconic(hWnd))
+                {
+                    ShowWindow(hWnd, SW_RESTORE);
+                }
+
+                SetForegroundWindow(hWnd);
+            }
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+
+            var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+
+            // Remove APPWINDOW, add TOOLWINDOW → hides from Alt+Tab
+            exStyle &= ~WS_EX_APPWINDOW;
+            exStyle |= WS_EX_TOOLWINDOW;
+
+            SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+        }
+
+        #region DLL IMPORT
+        [DllImport("user32.dll")]
+        static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        static extern bool IsIconic(IntPtr hWnd);
+
+        const int SW_RESTORE = 9;
+        const int GWL_EXSTYLE = -20;
+        const int WS_EX_TOOLWINDOW = 0x00000080;
+        const int WS_EX_APPWINDOW = 0x00040000;
+        #endregion
+    }
+}
