@@ -21,6 +21,8 @@ F5 – show About. You always see on start.
 
 F10 – hide/show the overlay
 
+0 – hide/show only evidences and ghosts but leave the timer.
+
 1 – (un)mark the D.O.T.S.
 2 – (un)mark the EMF 5
 3 – (un)mark the Freezing Temperatures
@@ -46,6 +48,8 @@ F4 – закриття асиста. Якщо ви закриваєте гру 
 F5 – показати інформацію «Про програму». Ви бачите її щоразу під час запуску.
 
 F10 – приховати/показати оверлей
+
+0 – приховати/показати лише докази та привидів, але залишити таймер.
 
 1 – (зняти/позначити) D.O.T.S.
 2 – (зняти/позначити) EMF 5
