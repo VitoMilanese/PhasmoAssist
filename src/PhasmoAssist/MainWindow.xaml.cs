@@ -2,7 +2,6 @@
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Security.Policy;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -76,7 +75,9 @@ namespace PhasmoAssist
             _keyboardHook = new GlobalKeyboardHook();
             _keyboardHook.KeyPressed += OnGlobalKeyPressed;
 
+#if RELEASE
             LaunchTheGame();
+#endif
         }
 
         private void LoadLanguage()
@@ -657,7 +658,14 @@ namespace PhasmoAssist
             {
                 Dispatcher.Invoke(() =>
                 {
-                    tbAssistTimer.Text = _sw.Elapsed.ToString("ss") + "." + _sw.Elapsed.Milliseconds.ToString();
+                    if (_sw.Elapsed.Minutes > 0)
+                    {
+                        tbAssistTimer.Text = _sw.Elapsed.ToString("mm") + "." + _sw.Elapsed.ToString("ss") + "." + _sw.Elapsed.Milliseconds.ToString();
+                    }
+                    else
+                    {
+                        tbAssistTimer.Text = _sw.Elapsed.ToString("ss") + "." + _sw.Elapsed.Milliseconds.ToString();
+                    }
                     if (_sw.Elapsed.Seconds >= 20)
                     {
                         tbAssistTimer.FontSize = _timerFontSizeAbove20;
@@ -665,6 +673,10 @@ namespace PhasmoAssist
                     if (_sw.Elapsed.Seconds >= 180)
                     {
                         tbAssistTimer.Foreground = Brushes.Red;
+                    }
+                    if (_sw.Elapsed.TotalMinutes >= 10)
+                    {
+                        _assistTimerToken.Cancel();
                     }
                 });
                 await Task.Delay(100);
