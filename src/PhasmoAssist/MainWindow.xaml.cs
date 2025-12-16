@@ -46,6 +46,13 @@ namespace PhasmoAssist
 
         public MainWindow()
         {
+            var processName = Process.GetCurrentProcess().ProcessName;
+            var processCount = Process.GetProcessesByName(processName).Count();
+            if (processCount > 1)
+            {
+                Application.Current.Shutdown();
+            }
+
             InitializeComponent();
 
             _isVisible = true;
