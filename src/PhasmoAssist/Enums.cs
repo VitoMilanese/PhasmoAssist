@@ -25,7 +25,10 @@
         Mimic,
         Moroi,
         Deogen,
-        Thaye
+        Thaye,
+        Dayan,
+        Obambo,
+        Gallu
     }
 
     public enum EEvidence

@@ -487,6 +487,36 @@ namespace PhasmoAssist
                         EEvidence.GhostWriting,
                         EEvidence.GhostOrb
                     }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Dayan,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.EMF5,
+                        EEvidence.GhostOrb,
+                        EEvidence.SpiritBox
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Obambo,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.GhostWriting,
+                        EEvidence.Ultraviolet,
+                        EEvidence.DOTS
+                    }
+                },
+                new Ghost
+                {
+                    GhostType = EGhost.Gallu,
+                    Evidences = new List<EEvidence>
+                    {
+                        EEvidence.EMF5,
+                        EEvidence.Ultraviolet,
+                        EEvidence.SpiritBox
+                    }
                 }
             ];
         }
