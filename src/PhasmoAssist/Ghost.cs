@@ -6,6 +6,7 @@ namespace PhasmoAssist
     {
         public EGhost GhostType { get; set; }
         public List<EEvidence>? Evidences { get; set; }
+        public bool Hidden { get; set; }
 
         public bool Check(Dictionary<EEvidence, bool> evidences)
         {

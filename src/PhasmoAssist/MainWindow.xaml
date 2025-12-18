@@ -37,6 +37,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock x:Name="tbEvidences"
@@ -44,12 +45,19 @@
                            FontSize="25"
                            TextWrapping="Wrap"
                            Foreground="White"/>
-            
+
                 <TextBlock x:Name="tbGhosts"
                            Grid.Row="1"
                            FontSize="25"
                            TextWrapping="Wrap"
                            Foreground="White"/>
+
+                <TextBlock x:Name="tbGhostsHidden"
+                           Grid.Row="2"
+                           FontSize="25"
+                           TextWrapping="Wrap"
+                           TextDecorations="Strikethrough"
+                           Foreground="LightGray"/>
             </Grid>
         </Grid>
 

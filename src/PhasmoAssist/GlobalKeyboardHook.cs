@@ -8,6 +8,7 @@ namespace PhasmoAssist
     {
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
 
         private IntPtr _hookId = IntPtr.Zero;
         private LowLevelKeyboardProc _proc;
@@ -32,6 +33,9 @@ namespace PhasmoAssist
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
+        private static bool _lCtrl { get; set; }
+        public static bool LCtrl => _lCtrl;
+
         private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && wParam == (IntPtr)WM_KEYDOWN)
@@ -39,6 +43,22 @@ namespace PhasmoAssist
                 int vkCode = Marshal.ReadInt32(lParam);
                 Key key = KeyInterop.KeyFromVirtualKey(vkCode);
                 KeyPressed?.Invoke(key);
+
+                if (key == Key.LeftCtrl)
+                {
+                    _lCtrl = true;
+                }
+            }
+
+            if (nCode >= 0 && wParam == (IntPtr)WM_KEYUP)
+            {
+                int vkCode = Marshal.ReadInt32(lParam);
+                Key key = KeyInterop.KeyFromVirtualKey(vkCode);
+
+                if (key == Key.LeftCtrl)
+                {
+                    _lCtrl = false;
+                }
             }
 
             return CallNextHookEx(_hookId, nCode, wParam, lParam);

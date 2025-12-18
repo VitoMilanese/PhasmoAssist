@@ -10,6 +10,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Enum;
+using Newtonsoft.Json;
 
 namespace PhasmoAssist
 {
@@ -40,9 +41,12 @@ namespace PhasmoAssist
         private CancellationTokenSource? _assistTimerToken { get; set; }
         private CancellationTokenSource? _blinkTextToken { get; set; }
 
-        private List<Ghost>? Ghosts { get; set; }
+        private List<Ghost>? _ghosts { get; set; }
+        private List<Ghost>? _ghostsBackup { get; set; }
         private Dictionary<EEvidence, bool> _evidences = new Dictionary<EEvidence, bool>();
         private Dictionary<EEvidence, bool> _evidencesBackup = new Dictionary<EEvidence, bool>();
+        
+        private Dictionary<Key, int> _keys = new Dictionary<Key, int>();
 
         public MainWindow()
         {
@@ -77,6 +81,7 @@ namespace PhasmoAssist
             LoadConfig();
             InitGhosts();
             LoadEvidences();
+            LoadKeys();
 
             _sw = new Stopwatch();
             _keyboardHook = new GlobalKeyboardHook();
@@ -245,7 +250,7 @@ namespace PhasmoAssist
 
         private void InitGhosts()
         {
-            Ghosts =
+            _ghosts =
             [
                 new Ghost
                 {
@@ -519,7 +524,35 @@ namespace PhasmoAssist
                     }
                 }
             ];
+
+            _ghostsBackup = JsonConvert.DeserializeObject<List<Ghost>?>(JsonConvert.SerializeObject(_ghosts));
         }
+
+        private void LoadKeys()
+        {
+            _keys.Add(Key.Q, 10);
+            _keys.Add(Key.W, 11);
+            _keys.Add(Key.E, 12);
+            _keys.Add(Key.R, 13);
+            _keys.Add(Key.T, 14);
+            _keys.Add(Key.Y, 15);
+            
+            _keys.Add(Key.A, 16);
+            _keys.Add(Key.S, 17);
+            _keys.Add(Key.D, 18);
+            _keys.Add(Key.F, 19);
+            _keys.Add(Key.G, 20);
+            _keys.Add(Key.H, 21);
+            
+            _keys.Add(Key.Z, 22);
+            _keys.Add(Key.X, 23);
+            _keys.Add(Key.C, 24);
+            _keys.Add(Key.V, 25);
+            _keys.Add(Key.B, 26);
+            _keys.Add(Key.N, 27);
+        }
+
+        private Key GetKey(int id) => _keys.Keys.FirstOrDefault(p => _keys[p] == id);
 
         private string GetWord(int id)
         {
@@ -532,6 +565,7 @@ namespace PhasmoAssist
 
         private void OnGlobalKeyPressed(Key key)
         {
+            if (key == Key.LeftCtrl) return;
             if ((_isTemporarilyHidden || !_isFocused) && key != Key.F4) return;
             Dispatcher.Invoke(() =>
             {
@@ -554,29 +588,58 @@ namespace PhasmoAssist
                         default:
                             {
                                 var n = key - Key.D0;
+                                if (_keys.ContainsKey(key))
+                                {
+                                    n = _keys[key];
+                                }
                                 if (n == 0 || key == Key.Oem3)
                                 {
                                     if (!_evidences.Where(p => p.Value).Select(p => p.Key).Any())
                                     {
+                                        for (var i = 0; i < _ghostsBackup!.Count; ++i)
+                                        {
+                                            _ghosts![i].Hidden = _ghostsBackup[i].Hidden;
+                                        }
                                         foreach (var evidence in _evidencesBackup.Keys)
                                         {
                                             _evidences[evidence] = _evidencesBackup[evidence];
-                                            OnEvidencesUpdated();
                                         }
+                                        OnEvidencesUpdated();
                                     }
                                     else
                                     {
+                                        for (var i = 0; i < _ghosts!.Count; ++i)
+                                        {
+                                            _ghostsBackup![i].Hidden = _ghosts[i].Hidden;
+                                            _ghosts[i].Hidden = false;
+                                        }
                                         foreach (var evidence in _evidences.Keys)
                                         {
                                             _evidencesBackup[evidence] = _evidences[evidence];
                                             _evidences[evidence] = false;
-                                            OnEvidencesUpdated();
                                         }
+                                        OnEvidencesUpdated();
                                     }
-                                } else if (n > 0 && n < 8)
+                                }
+                                else
                                 {
-                                    _evidences[(EEvidence)(n - 1)] = !_evidences[(EEvidence)(n - 1)];
-                                    OnEvidencesUpdated();
+                                    if (GlobalKeyboardHook.LCtrl && n > 0)
+                                    {
+                                        if (n < 10)
+                                        {
+                                            _ghosts![n - 1].Hidden = !_ghosts[n - 1].Hidden;
+                                        }
+                                        else
+                                        {
+                                            _ghosts![n - 1].Hidden = !_ghosts[n - 1].Hidden;
+                                        }
+                                        OnEvidencesUpdated();
+                                    }
+                                    else if (n > 0 && n < 8)
+                                    {
+                                        _evidences[(EEvidence)(n - 1)] = !_evidences[(EEvidence)(n - 1)];
+                                        OnEvidencesUpdated();
+                                    }
                                 }
                                 break;
                             }
@@ -726,6 +789,7 @@ namespace PhasmoAssist
             {
                 tbEvidences.Text = string.Empty;
                 tbGhosts.Text = string.Empty;
+                tbGhostsHidden.Text = string.Empty;
                 tbEvidences.Visibility = Visibility.Collapsed;
                 tbGhosts.Visibility = Visibility.Collapsed;
                 tbGhosts.FontSize = _ghostsFontSize;
@@ -741,21 +805,37 @@ namespace PhasmoAssist
             tbEvidences.Visibility = string.IsNullOrWhiteSpace(tbEvidences.Text) ? Visibility.Collapsed : Visibility.Visible;
 
             var filter = new List<Ghost>();
-            foreach (var ghost in Ghosts!)
+            var filterHidden = new List<Ghost>();
+            foreach (var ghost in _ghosts!)
             {
                 if (ghost.Check(_evidences))
                 {
-                    filter.Add(ghost);
+                    if (ghost.Hidden)
+                    {
+                        filterHidden.Add(ghost);
+                    }
+                    else
+                    {
+                        filter.Add(ghost);
+                    }
                 }
             }
-            if (filter.Any())
+            if (filter.Any() || filterHidden.Any())
             {
                 var ghosts = new List<string>();
                 foreach (var ghost in filter)
                 {
                     ghosts.Add(Translate(ghost.GhostType));
                 }
-                tbGhosts.Text = string.Join (" - ", ghosts);
+                var ghostsHidden = new List<string>();
+                foreach (var ghost in filterHidden)
+                {
+                    ghostsHidden.Add(Translate(ghost.GhostType));
+                }
+                var left = string.Join (" - ", ghosts);
+                var right = string.Join (" - ", ghostsHidden);
+                tbGhosts.Text = left;
+                tbGhostsHidden.Text = right;
                 if (ghosts.Count == 1)
                 {
                     tbGhosts.FontSize = _ghostsFontSizeIdentified;
@@ -773,9 +853,22 @@ namespace PhasmoAssist
             tbGhosts.Visibility = string.IsNullOrWhiteSpace(tbGhosts.Text) ? Visibility.Collapsed : Visibility.Visible;
         }
 
-        private string Translate(EEvidence evidence) => GetWord((int)evidence);
+        private string Translate(EEvidence evidence) => $"{(int)evidence + 1}. " + GetWord((int)evidence);
 
-        private string Translate(EGhost ghost) => GetWord((int)ghost + 7);
+        private string Translate(EGhost ghost)
+        {
+            var id = string.Empty;
+            var n = (int)ghost;
+            if (n >= 9)
+            {
+                id = GetKey(n + 1).ToString();
+            }
+            else
+            {
+                id = (n + 1).ToString();
+            }
+            return $"{id}. " + GetWord((int)ghost + 7);
+        }
 
         private void Hyperlink_Click(object sender, RoutedEventArgs e)
         {
