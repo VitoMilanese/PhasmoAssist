@@ -88,7 +88,7 @@
                 <TextBlock FontSize="15"
                            Foreground="White"
                            HorizontalAlignment="Center"
-                           Text="v. 1.1.1 - 2025"/>
+                           Text="v. 1.2.0 - 2025"/>
                 <Border Height="15"/>
                 <TextBlock x:Name="tbBlink1"
                            FontSize="18"
