@@ -33,6 +33,11 @@ F10 – hide/show the overlay
 
 ~ (the key to the left of 1) – unmark all evidences. Press it again to restore the evidences marked before reset. The key [ ~ ] may look like [ ` ] on your keyboard – depends on the keyboard model.
 
+L.CTRL + 1 ... L.CTRL + 9,
+L.CTRL + Q ... L.CTRL + Y,
+L.CTRL + A ... L.CTRL + H,
+L.CTRL + Z ... L.CTRL + N - exclude a ghost from the list.
+
 You can change the text size in the config.cfg file.
 
 ---------------------------------------------------
@@ -60,5 +65,10 @@ F10 – приховати/показати оверлей
 7 – (зняти/позначити) Ультрафіолет
 
 ~ (клавіша ліворуч від 1) – скинути всі докази. Натисніть ще раз, щоб відновити докази, які були позначені до скидання. Клавіша [ ~ ] може виглядати на вашій клавіатурі як [ ` ] – залежить від моделі клавіатури.
+
+L.CTRL + 1 ... L.CTRL + 9,
+L.CTRL + Q ... L.CTRL + Y,
+L.CTRL + A ... L.CTRL + H,
+L.CTRL + Z ... L.CTRL + N - виключити привида зі списку.
 
 Розмір тексту можна змінити у файлі config.cfg.
