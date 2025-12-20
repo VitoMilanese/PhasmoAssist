@@ -37,8 +37,9 @@ L.CTRL + 1 ... L.CTRL + 9,
 L.CTRL + Q ... L.CTRL + Y,
 L.CTRL + A ... L.CTRL + H,
 L.CTRL + Z ... L.CTRL + N - exclude a ghost from the list.
+You can switch the L.CTRL button to L.ALT button in the config.cfg by replacing 0 with 1 in the 12th line.
 
-You can change the text size in the config.cfg file.
+Also you can change the text size in the config.cfg file.
 
 ---------------------------------------------------
 
@@ -70,5 +71,6 @@ L.CTRL + 1 ... L.CTRL + 9,
 L.CTRL + Q ... L.CTRL + Y,
 L.CTRL + A ... L.CTRL + H,
 L.CTRL + Z ... L.CTRL + N - виключити привида зі списку.
+Ви можете змінити L.CTRL на L.ALT у файлі config.cfg, замінивши 0 на 1 у 12 рядку.
 
-Розмір тексту можна змінити у файлі config.cfg.
+Також у файлі config.cfg можна змінити розмір тексту.
