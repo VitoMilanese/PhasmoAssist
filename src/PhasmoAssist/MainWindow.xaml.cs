@@ -40,6 +40,12 @@ namespace PhasmoAssist
         private Stopwatch _sw { get; set; }
         private CancellationTokenSource? _assistTimerToken { get; set; }
         private CancellationTokenSource? _blinkTextToken { get; set; }
+        
+        private Key _shortcutKet
+        {
+            get => GlobalKeyboardHook.ShortcutKey;
+            set => GlobalKeyboardHook.ShortcutKey = value;
+        }
 
         private List<Ghost>? _ghosts { get; set; }
         private List<Ghost>? _ghostsBackup { get; set; }
@@ -193,7 +199,7 @@ namespace PhasmoAssist
                 var content = File.ReadAllLines(configFileName);
                 for (var i = 1; i < content.Length; i += 2)
                 {
-                    var line = content[i];
+                    var line = content[i].Trim();
                     if (!int.TryParse(line, out var value)) value = 0;
                     if (value <= 0) continue;
 
@@ -224,6 +230,18 @@ namespace PhasmoAssist
                                 _ghostsFontSizeIdentified = value;
                                 break;
                             }
+                        case 11:
+                            {
+                                if (value == 1)
+                                {
+                                    _shortcutKet = Key.LeftAlt;
+                                }
+                                else
+                                {
+                                    _shortcutKet = Key.LeftCtrl;
+                                }
+                                break;
+                            }
                     }
                 }
             }
@@ -243,7 +261,9 @@ namespace PhasmoAssist
                 "[Ghosts font size]",
                 _ghostsFontSize.ToString(),
                 "[Identified ghost font size]",
-                _ghostsFontSizeIdentified.ToString()
+                _ghostsFontSizeIdentified.ToString(),
+                "[Spetial key for shortcuts (1 - LeftAlt, 0 - LeftCtrl, anything else - LeftCtrl)]",
+                (_shortcutKet == Key.LeftAlt ? 1 : 0).ToString(),
             };
             File.WriteAllLines(configFileName, cfg);
         }
@@ -565,7 +585,7 @@ namespace PhasmoAssist
 
         private void OnGlobalKeyPressed(Key key)
         {
-            if (key == Key.LeftCtrl) return;
+            if (key == _shortcutKet) return;
             if ((_isTemporarilyHidden || !_isFocused) && key != Key.F4) return;
             Dispatcher.Invoke(() =>
             {
